@@ -1,0 +1,279 @@
+experiment_name: adaptive_e2vid
+check_val_every_n_epoch: 1
+test_output_dir: results/adaptive_e2vid
+save_in_pairs: false
+use_compile: false
+task: adaptive_e2vid
+
+module:
+  loss:
+    lpips_weight: 1.0
+    lpips_type: vgg
+    l2_weight: 0
+    l1_weight: 1.0
+    ssim_weight: 0
+    temporal_consistency_weight: 0
+
+  model:
+    target: model.model.E2VIDSparse2
+    params:
+      unet_kwargs:
+        num_bins: 5
+        skip_type: sum
+        recurrent_block_type: convlstm
+        num_encoders: 3
+        base_num_channels: 32
+        num_residual_blocks: 2
+        use_upsample_conv: true
+        final_activation: ""
+        norm: none
+
+train_stages:
+  - stage_name: min_128
+    max_epochs: 50
+
+    optimizer:
+      target: torch.optim.Adam
+      params:
+        lr: 0.0001
+        weight_decay: 0
+        amsgrad: true
+
+    lr_scheduler:
+      target: torch.optim.lr_scheduler.StepLR
+      params:
+        step_size: 50
+        gamma: 1.0 # This is actually constant LR
+
+    dataset:
+      train_batch_size: 1 # Each patch has a different size
+      num_workers: 1
+      val_batch_size: 1 # Test data has different patch sizes & seq lens
+      persistent_workers: true
+      pin_memory: true
+      dataset_collate_fn: data.sparse_v2v.no_collate_function
+
+      train:
+        - data_file: config/webvid_root.txt
+          class_name: data.sparse_v2v.SparseDataset
+          video_list_file: config/webvid2000_train.txt
+          data_source_name: webvid
+          video_reader: opencv
+          sequence_length: 40
+          pause_granularity: 5
+          proba_pause_when_running: 0
+          proba_pause_when_paused: 0
+          crop_size: 128
+          random_flip: true
+          num_bins: 5
+          min_resize_scale: 1
+          max_resize_scale: 1
+          frames_per_bin: 1
+          threshold_range: [0.05, 1]
+          max_thres_pos_neg_gap: 1.5
+          base_noise_std_range: [0, 0.01]
+          hot_pixel_std_range: [0, 10]
+          max_samples_per_shot: 10
+          trigger_type: merge
+          bin_type: events
+          trigger_rate: 0.25
+          min_patch: 128
+          patch_per_time: 2
+
+      val:
+        - data_file: config/webvid_root.txt
+          class_name: data.sparse_v2v.SparseDataset
+          video_list_file: config/webvid200_val.txt
+          data_source_name: webvid
+          video_reader: opencv
+          sequence_length: 40
+          pause_granularity: 5
+          proba_pause_when_running: 0
+          proba_pause_when_paused: 0
+          crop_size: 128
+          random_flip: true
+          num_bins: 5
+          min_resize_scale: 1
+          max_resize_scale: 1
+          frames_per_bin: 1
+          threshold_range: [0.05, 1]
+          max_thres_pos_neg_gap: 1.5
+          base_noise_std_range: [0, 0.01]
+          hot_pixel_std_range: [0, 10]
+          max_samples_per_shot: 10
+          trigger_type: merge
+          bin_type: events
+          trigger_rate: 0.25
+          min_patch: 128
+          patch_per_time: 2
+
+  - stage_name: min_64
+    max_epochs: 5
+
+    optimizer:
+      target: torch.optim.Adam
+      params:
+        lr: 0.0001
+        weight_decay: 0
+        amsgrad: true
+
+    lr_scheduler:
+      target: torch.optim.lr_scheduler.StepLR
+      params:
+        step_size: 50
+        gamma: 1.0 # This is actually constant LR
+
+    dataset:
+      train_batch_size: 1 # Each patch has a different size
+      num_workers: 1
+      val_batch_size: 1 # Test data has different patch sizes & seq lens
+      persistent_workers: true
+      pin_memory: true
+      dataset_collate_fn: data.sparse_v2v.no_collate_function
+
+      train:
+        - data_file: config/webvid_root.txt
+          class_name: data.sparse_v2v.SparseDataset
+          video_list_file: config/webvid2000_train.txt
+          data_source_name: webvid
+          video_reader: opencv
+          sequence_length: 40
+          pause_granularity: 5
+          proba_pause_when_running: 0
+          proba_pause_when_paused: 0
+          crop_size: 128
+          random_flip: true
+          num_bins: 5
+          min_resize_scale: 1
+          max_resize_scale: 1
+          frames_per_bin: 1
+          threshold_range: [0.05, 1]
+          max_thres_pos_neg_gap: 1.5
+          base_noise_std_range: [0, 0.01]
+          hot_pixel_std_range: [0, 10]
+          max_samples_per_shot: 10
+          trigger_type: merge
+          bin_type: events
+          trigger_rate: 0.25
+          min_patch: 64
+          patch_per_time: 2
+
+      val:
+        - data_file: config/webvid_root.txt
+          class_name: data.sparse_v2v.SparseDataset
+          video_list_file: config/webvid200_val.txt
+          data_source_name: webvid
+          video_reader: opencv
+          sequence_length: 40
+          pause_granularity: 5
+          proba_pause_when_running: 0
+          proba_pause_when_paused: 0
+          crop_size: 128
+          random_flip: true
+          num_bins: 5
+          min_resize_scale: 1
+          max_resize_scale: 1
+          frames_per_bin: 1
+          threshold_range: [0.05, 1]
+          max_thres_pos_neg_gap: 1.5
+          base_noise_std_range: [0, 0.01]
+          hot_pixel_std_range: [0, 10]
+          max_samples_per_shot: 10
+          trigger_type: merge
+          bin_type: events
+          trigger_rate: 0.25
+          min_patch: 64
+          patch_per_time: 2
+
+  - stage_name: min_32
+    max_epochs: 5
+
+    optimizer:
+      target: torch.optim.Adam
+      params:
+        lr: 0.0001
+        weight_decay: 0
+        amsgrad: true
+
+    lr_scheduler:
+      target: torch.optim.lr_scheduler.StepLR
+      params:
+        step_size: 50
+        gamma: 1.0 # This is actually constant LR
+
+    dataset:
+      train_batch_size: 1 # Each patch has a different size
+      num_workers: 1
+      val_batch_size: 1 # Test data has different patch sizes & seq lens
+      persistent_workers: true
+      pin_memory: true
+      dataset_collate_fn: data.sparse_v2v.no_collate_function
+
+      train:
+        - data_file: config/webvid_root.txt
+          class_name: data.sparse_v2v.SparseDataset
+          video_list_file: config/webvid2000_train.txt
+          data_source_name: webvid
+          video_reader: opencv
+          sequence_length: 40
+          pause_granularity: 5
+          proba_pause_when_running: 0
+          proba_pause_when_paused: 0
+          crop_size: 160
+          random_flip: true
+          num_bins: 5
+          min_resize_scale: 1
+          max_resize_scale: 1
+          frames_per_bin: 1
+          threshold_range: [0.05, 1]
+          max_thres_pos_neg_gap: 1.5
+          base_noise_std_range: [0, 0.01]
+          hot_pixel_std_range: [0, 10]
+          max_samples_per_shot: 10
+          trigger_type: merge
+          bin_type: events
+          trigger_rate: 0.25
+          min_patch: 32
+          patch_per_time: 2
+
+      val:
+        - data_file: config/webvid_root.txt
+          class_name: data.sparse_v2v.SparseDataset
+          video_list_file: config/webvid200_val.txt
+          data_source_name: webvid
+          video_reader: opencv
+          sequence_length: 40
+          pause_granularity: 5
+          proba_pause_when_running: 0
+          proba_pause_when_paused: 0
+          crop_size: 160
+          random_flip: true
+          num_bins: 5
+          min_resize_scale: 1
+          max_resize_scale: 1
+          frames_per_bin: 1
+          threshold_range: [0.05, 1]
+          max_thres_pos_neg_gap: 1.5
+          base_noise_std_range: [0, 0.01]
+          hot_pixel_std_range: [0, 10]
+          max_samples_per_shot: 10
+          trigger_type: merge
+          bin_type: events
+          trigger_rate: 0.25
+          min_patch: 32
+          patch_per_time: 2
+
+          
+test_stage:
+  test_batch_size: 1
+  test_num_workers: 8
+  dataset_collate_fn: data.sparse_v2v.no_collate_function
+  test:
+    - data_file: config/evqa_all.txt
+      class_name: data.sparse_testh5.SparseTestH5Dataset
+      num_bins: 5
+      trigger_type: merge
+      bin_type: events
+      patch_dim: 2
+      patch_per_time: 2
+      trigger_param_gen_name: fixed_threshold

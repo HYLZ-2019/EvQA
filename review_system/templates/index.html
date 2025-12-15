@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Video Annotation System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='question-menu.css') }}">
+
+
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Event Video Annotation System</h1>
+            <div class="header-controls">
+                <div class="question-id-display" onclick="toggleQuestionList()" style="cursor: pointer;">
+                    <span class="question-id-label">Question ID:</span>
+                    <span class="question-id-value" id="questionIdValue">-</span>
+                </div>
+                <button class="nav-button" onclick="toggleWrongAnswers()" id="wrongAnswersBtn">Wrong Answers (0)</button>
+                <div class="username-input">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" placeholder="Enter your username" maxlength="50" oninput="updateUsername()">
+                </div>
+                <div class="progress-display" id="mainProgressDisplay">
+                    <span class="progress-label">Progress:</span>
+                    <span class="progress-count" id="mainProgressCount">0 / 0</span>
+                    <div class="progress-bar-main">
+                        <div class="progress-fill-main" id="mainProgressFill" style="width: 0%;"></div>
+                    </div>
+                </div>
+                <a href="/dashboard" class="nav-button">Dashboard</a>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Wrong Answers Sidebar -->
+            <div class="wrong-answers-sidebar" id="wrongAnswersSidebar">
+                <div class="sidebar-header">
+                    <h3>Wrong Answers</h3>
+                    <button class="close-btn" onclick="toggleWrongAnswers()">&times;</button>
+                </div>
+                <div class="sidebar-content" id="wrongAnswersContent">
+                    <div class="loading-small" id="wrongAnswersLoading">
+                        <div class="spinner-small"></div>
+                        <p>Loading wrong answers...</p>
+                    </div>
+                    <div class="wrong-answers-list" id="wrongAnswersList"></div>
+                </div>
+            </div>
+
+            <!-- Question List Sidebar -->
+            <div class="question-list-sidebar" id="questionListSidebar">
+                <div class="sidebar-header">
+                    <h3>Question List</h3>
+                    <button class="close-btn" onclick="toggleQuestionList()">&times;</button>
+                </div>
+                <div class="sidebar-content" id="questionListContent">
+                    <div class="search-container">
+                        <input type="text" id="questionSearchInput" placeholder="Search by Question ID..." oninput="searchQuestions()">
+                        <button class="search-clear-btn" onclick="clearQuestionSearch()" id="searchClearBtn" style="display: none;">&times;</button>
+                    </div>
+                    <div class="loading-small" id="questionListLoading">
+                        <div class="spinner-small"></div>
+                        <p>Loading questions...</p>
+                    </div>
+                    <div class="question-list-groups" id="questionListGroups"></div>
+                </div>
+            </div>
+
+            <!-- Loading Section -->
+            <div class="loading" id="loadingSection">
+                <div class="spinner"></div>
+                <p>Loading video and question...</p>
+            </div>
+
+            <!-- Question Section -->
+            <div class="question-section" id="questionSection">
+
+                <div class="main-content">
+                    <div class="video-container">
+                        <div class="video-section">
+                            <video id="questionVideoVis" controls preload="metadata" autoplay muted>
+                                Your browser does not support the video tag.
+                            </video>
+                        </div>
+                        <div class="video-section">
+                            <video id="questionVideoE2vid" controls preload="metadata" autoplay muted>
+                                Your browser does not support the video tag.
+                            </video>
+                        </div>
+                    </div>
+
+                    <div class="question-content">
+                        <div class="question-text" id="questionText"></div>
+                        <div class="answers" id="answersContainer"></div>
+                    </div>
+
+                    <div class="controls">
+                        <button class="btn" onclick="previousQuestion()" id="prevBtn" style="display: none;">Previous</button>
+                        <button class="btn" onclick="submitAnswer()" id="submitBtn" disabled>Submit Answer</button>
+                        <button class="btn" onclick="nextQuestion()" id="nextBtn" style="display: none;">Next Question</button>
+                    </div>
+                </div>
+
+                <div id="questionError" class="error" style="display: none;"></div>
+            </div>
+
+            <!-- Completion Section -->
+            <div class="completion-section" id="completionSection">
+                <h2>🎉 Congratulations!</h2>
+                <p>You have completed all annotation questions. Thank you for your contribution!</p>
+                <button class="btn" onclick="resetQuestions()">Start Over</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentQuestion = null;
+        let selectedAnswer = null;
+        let questionCount = 0;
+        let currentIndex = 0;
+
+        // Load cached username and start annotation on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            loadCachedUsername();
+            // Wait a bit for cached username to be loaded, then update progress
+            setTimeout(() => {
+                updateMainProgress(); // Load initial progress
+                updateWrongAnswersCount(); // Load wrong answers count
+            }, 100);
+            loadQuestion(); // Start immediately
+        });
+
+        // Load cached username from localStorage
+        function loadCachedUsername() {
+            const cachedUsername = localStorage.getItem('annotationUsername');
+            if (cachedUsername) {
+                document.getElementById('username').value = cachedUsername;
+                // Trigger the update functions after setting the username
+                setTimeout(() => {
+                    updateMainProgress();
+                    updateWrongAnswersCount();
+                }, 50);
+            }
+        }
+
+        // Update username when user types
+        function updateUsername() {
+            const username = document.getElementById('username').value.trim();
+            if (username) {
+                localStorage.setItem('annotationUsername', username);
+                
+                // Send to server
+                fetch('/set_username', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username: username })
+                }).catch(error => {
+                    console.log('Failed to update username on server:', error);
+                });
+                
+                // Update progress displays when username changes
+                updateMainProgress();
+                updateWrongAnswersCount();
+                
+                // Update question list progress if open
+                updateQuestionListProgress();
+            } else {
+                // Clear progress displays if no username
+                document.getElementById('mainProgressCount').textContent = '0 / 0';
+                document.getElementById('mainProgressFill').style.width = '0%';
+                document.getElementById('wrongAnswersBtn').textContent = 'Wrong Answers (0)';
+                
+                // Also update question list progress to clear answered status
+                updateQuestionListProgress();
+            }
+        }
+
+        // Toggle wrong answers sidebar
+        function toggleWrongAnswers() {
+            const sidebar = document.getElementById('wrongAnswersSidebar');
+            const isVisible = sidebar.style.display === 'block';
+            
+            if (isVisible) {
+                sidebar.style.display = 'none';
+            } else {
+                sidebar.style.display = 'block';
+                loadWrongAnswers();
+            }
+        }
+
+        // Load and display wrong answers
+        async function loadWrongAnswers() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                document.getElementById('wrongAnswersContent').innerHTML = '<p class="no-data">Please enter a username first.</p>';
+                return;
+            }
+
+            const loading = document.getElementById('wrongAnswersLoading');
+            const list = document.getElementById('wrongAnswersList');
+            
+            loading.style.display = 'block';
+            list.innerHTML = '';
+
+            try {
+                const response = await fetch(`/get_user_wrong_answers?username=${encodeURIComponent(username)}`);
+                const data = await response.json();
+
+                loading.style.display = 'none';
+
+                if (data.wrong_answers.length === 0) {
+                    list.innerHTML = '<p class="no-data">🎉 No wrong answers yet! Keep up the good work!</p>';
+                    return;
+                }
+
+                // Display wrong answers
+                data.wrong_answers.forEach(wrongAnswer => {
+                    const item = document.createElement('div');
+                    item.className = 'wrong-answer-item';
+                    
+                    // Create bilingual question text
+                    let questionDisplay = wrongAnswer.question;
+                    if (wrongAnswer.question_cn) {
+                        questionDisplay = `<span class="english-text">${wrongAnswer.question}</span><span class="chinese-text">${wrongAnswer.question_cn}</span>`;
+                    }
+                    
+                    // Create bilingual answer texts
+                    let userAnswerDisplay = wrongAnswer.user_answer;
+                    let correctAnswerDisplay = wrongAnswer.correct_answer;
+                    if (wrongAnswer.correct_answer_cn) {
+                        correctAnswerDisplay = `<span class="english-text">${wrongAnswer.correct_answer}</span><span class="chinese-text">${wrongAnswer.correct_answer_cn}</span>`;
+                    }
+                    
+                    item.innerHTML = `
+                        <div class="wrong-answer-header">
+                            <span class="question-id">${wrongAnswer.question_id}</span>
+                            <span class="dataset-name">${wrongAnswer.dataset_name}</span>
+                        </div>
+                        <div class="wrong-answer-question">${questionDisplay}</div>
+                        <div class="wrong-answer-details">
+                            <div class="answer-comparison">
+                                <span class="user-answer">Your answer: <strong>${userAnswerDisplay}</strong></span>
+                                <span class="correct-answer">Correct: <strong>${correctAnswerDisplay}</strong></span>
+                            </div>
+                            <div class="timestamp">${new Date(wrongAnswer.timestamp).toLocaleString()}</div>
+                        </div>
+                        <button class="jump-btn" onclick="jumpToQuestion('${wrongAnswer.question_id}')">Jump to Question</button>
+                    `;
+                    
+                    list.appendChild(item);
+                });
+
+            } catch (error) {
+                loading.style.display = 'none';
+                list.innerHTML = '<p class="error">Failed to load wrong answers. Please try again.</p>';
+                console.error('Error loading wrong answers:', error);
+            }
+        }
+
+        // Jump to a specific question by ID
+        async function jumpToQuestion(questionId) {
+            try {
+                // Close sidebar and load the question directly
+                document.getElementById('wrongAnswersSidebar').style.display = 'none';
+                await loadQuestion(questionId);
+            } catch (error) {
+                console.error('Error jumping to question:', error);
+                alert('Failed to jump to question. Please try again.');
+            }
+        }
+
+        // Update wrong answers count in button
+        async function updateWrongAnswersCount() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                document.getElementById('wrongAnswersBtn').textContent = 'Wrong Answers (0)';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/get_user_wrong_answers?username=${encodeURIComponent(username)}`);
+                const data = await response.json();
+                
+                const count = data.total_wrong || 0;
+                document.getElementById('wrongAnswersBtn').textContent = `Wrong Answers (${count})`;
+                
+                // Update button color based on count
+                const btn = document.getElementById('wrongAnswersBtn');
+                if (count > 0) {
+                    btn.classList.add('has-wrong-answers');
+                } else {
+                    btn.classList.remove('has-wrong-answers');
+                }
+            } catch (error) {
+                console.error('Error updating wrong answers count:', error);
+            }
+        }
+
+        // Load current question
+        async function loadQuestion(targetQuestionId = null) {
+            showLoading(true);
+            hideError('questionError');
+
+            try {
+                const username = document.getElementById('username').value.trim();
+                let url = '/get_question';
+                const params = new URLSearchParams();
+                
+                if (username) {
+                    params.append('username', username);
+                }
+                if (targetQuestionId) {
+                    params.append('target', targetQuestionId);
+                }
+                
+                if (params.toString()) {
+                    url += '?' + params.toString();
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.message) {
+                    // All questions completed
+                    showCompletion();
+                    return;
+                }
+
+                currentQuestion = data;
+                displayQuestion(data);
+                await loadVideo(data.question_id);
+                
+                // Update menu if it exists
+                if (window.updateQuestionListProgress) {
+                    window.updateQuestionListProgress();
+                }
+                
+            } catch (error) {
+                showError('questionError', 'Failed to load question. Please refresh the page.');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Display question content
+        function displayQuestion(question) {
+            const questionText = document.getElementById('questionText');
+            
+            // Display bilingual question text
+            if (question.question_cn) {
+                questionText.innerHTML = `
+                    <span class="english-text">${question.question}</span>
+                    <span class="chinese-text">${question.question_cn}</span>
+                `;
+            } else {
+                questionText.textContent = question.question;
+            }
+            
+            // Update question ID display
+            document.getElementById('questionIdValue').textContent = question.unique_id || 'N/A';
+            
+            // Create answer options
+            const answersContainer = document.getElementById('answersContainer');
+            answersContainer.innerHTML = '';
+            
+            let finalOptions = [];
+
+            if (question.is_release && question.choices && question.choices.length > 0) {
+                // Release mode: Use the pre-shuffled 'choices' array and pair with 'choices_cn'.
+                finalOptions = question.choices.map((choice, index) => ({
+                    english: choice,
+                    chinese: (question.choices_cn && question.choices_cn[index]) ? question.choices_cn[index] : ''
+                }));
+            } else {
+                // Annotation mode: Combine answer and wrong_answers, then shuffle.
+                const allAnswers = [question.answer, ...question.wrong_answers];
+                const allAnswersCn = question.answer_cn && question.wrong_answers_cn ? 
+                    [question.answer_cn, ...question.wrong_answers_cn] : [];
+                
+                const pairedAnswers = allAnswers.map((answer, index) => ({
+                    english: answer,
+                    chinese: allAnswersCn[index] || ''
+                }));
+                
+                finalOptions = shuffleArray(pairedAnswers);
+            }
+            
+            // Add the "BAD QUESTION" option at the end
+            finalOptions.push({
+                english: "===BAD QUESTION===",
+                chinese: "===题目有问题==="
+            });
+            
+            finalOptions.forEach((pair, index) => {
+                const answerDiv = document.createElement('div');
+                answerDiv.className = 'answer-option';
+                
+                // Add special styling for BAD QUESTION option
+                if (pair.english === "===BAD QUESTION===") {
+                    answerDiv.classList.add('bad-question-option');
+                }
+                
+                answerDiv.onclick = () => selectAnswer(pair.english, answerDiv);
+                
+                // Display bilingual answer if Chinese is available
+                if (pair.chinese && pair.english !== "===BAD QUESTION===") {
+                    answerDiv.innerHTML = `
+                        <input type="radio" name="answer" value="${pair.english}" id="answer${index}">
+                        <label for="answer${index}">
+                            <span class="english-text">${pair.english}</span>
+                            <span class="chinese-text">${pair.chinese}</span>
+                        </label>
+                    `;
+                } else {
+                    answerDiv.innerHTML = `
+                        <input type="radio" name="answer" value="${pair.english}" id="answer${index}">
+                        <label for="answer${index}">${pair.english}</label>
+                    `;
+                }
+                
+                answersContainer.appendChild(answerDiv);
+            });
+
+            // Reset selection
+            selectedAnswer = null;
+            document.getElementById('submitBtn').disabled = true;
+            
+            // Show question section
+            document.getElementById('questionSection').style.display = 'block';
+        }
+
+        // Load video for current question
+        async function loadVideo(questionId = null) {
+            const videoVis = document.getElementById('questionVideoVis');
+            const videoE2vid = document.getElementById('questionVideoE2vid');
+            
+            try {
+                // Clear any existing event listeners
+                videoVis.removeEventListener('loadeddata', autoPlayVideo);
+                videoVis.removeEventListener('canplaythrough', autoPlayVideo);
+                videoE2vid.removeEventListener('loadeddata', autoPlayVideo);
+                videoE2vid.removeEventListener('canplaythrough', autoPlayVideo);
+                
+                // Set video source to the get_video endpoint
+                const username = document.getElementById('username').value.trim();
+                
+                // Generate URLs for both video types
+                let urlVis = '/get_video?type=vis';
+                let urlE2vid = '/get_video?type=e2vid';
+                
+                const params = new URLSearchParams();
+                
+                if (username) {
+                    params.append('username', username);
+                }
+                if (questionId) {
+                    params.append('target', questionId);
+                }
+                
+                if (params.toString()) {
+                    urlVis += '&' + params.toString();
+                    urlE2vid += '&' + params.toString();
+                }
+                
+                urlVis += '&t=' + Date.now(); // Cache buster
+                urlE2vid += '&t=' + Date.now(); // Cache buster
+                
+                videoVis.src = urlVis;
+                videoE2vid.src = urlE2vid;
+                
+                // Auto-play videos when loaded - use multiple events for better compatibility
+                videoVis.addEventListener('loadeddata', autoPlayVideo, { once: true });
+                videoVis.addEventListener('canplaythrough', autoPlayVideo, { once: true });
+                videoE2vid.addEventListener('loadeddata', autoPlayVideo, { once: true });
+                videoE2vid.addEventListener('canplaythrough', autoPlayVideo, { once: true });
+                
+                // Force load the videos
+                videoVis.load();
+                videoE2vid.load();
+                
+            } catch (error) {
+                showError('questionError', 'Failed to load videos.');
+            }
+        }
+
+        // Auto-play video function
+        function autoPlayVideo() {
+            const videoVis = document.getElementById('questionVideoVis');
+            const videoE2vid = document.getElementById('questionVideoE2vid');
+            
+            // Try to play the videos
+            const playPromiseVis = videoVis.play();
+            const playPromiseE2vid = videoE2vid.play();
+            
+            if (playPromiseVis !== undefined) {
+                playPromiseVis.then(() => {
+                    console.log('Vis video auto-play successful');
+                }).catch(error => {
+                    console.log('Vis video auto-play blocked by browser policy:', error);
+                    videoVis.muted = false;
+                });
+            }
+            
+            if (playPromiseE2vid !== undefined) {
+                playPromiseE2vid.then(() => {
+                    console.log('E2VID video auto-play successful');
+                }).catch(error => {
+                    console.log('E2VID video auto-play blocked by browser policy:', error);
+                    videoE2vid.muted = false;
+                });
+            }
+        }
+
+        // Handle answer selection
+        function selectAnswer(answer, element) {
+            // Remove previous selection
+            document.querySelectorAll('.answer-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Select current answer
+            element.classList.add('selected');
+            element.querySelector('input').checked = true;
+            selectedAnswer = answer;
+            
+            // Enable submit button
+            document.getElementById('submitBtn').disabled = false;
+        }
+
+        // Submit answer
+        async function submitAnswer() {
+            if (!selectedAnswer) {
+                showError('questionError', 'Please select an answer before submitting.');
+                return;
+            }
+
+            if (!currentQuestion) {
+                showError('questionError', 'No question loaded.');
+                return;
+            }
+
+            const username = document.getElementById('username').value.trim();
+            
+            if (!username) {
+                alert('Please enter a username before submitting your answer.');
+                document.getElementById('username').focus();
+                return;
+            }
+
+            try {
+                const response = await fetch('/submit_answer', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        answer: selectedAnswer,
+                        username: username,
+                        question_id: currentQuestion.question_id
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Check if user completed all questions after this submission
+                    if (data.all_completed) {
+                        alert('🎉 恭喜！您已经完成了所有的标注题目！感谢您的贡献！');
+                    }
+                    
+                    // Update progress displays
+                    await updateMainProgress();
+                    
+                    // Update wrong answers count
+                    updateWrongAnswersCount();
+                    
+                    // Update question list progress if open
+                    updateQuestionListProgress();
+                    
+                    if (data.next_available && data.next_question_id) {
+                        // Load next question automatically
+                        await loadQuestion();
+                    } else {
+                        // No more questions available
+                        showError('questionError', 'No more questions available.');
+                    }
+                    
+                    // Update menu if it exists
+                    if (window.updateQuestionListProgress) {
+                        window.updateQuestionListProgress();
+                    }
+                } else {
+                    showError('questionError', data.error || 'Failed to submit answer.');
+                }
+            } catch (error) {
+                showError('questionError', 'Connection error. Please try again.');
+            }
+        }
+
+        // Show completion screen
+        function showCompletion() {
+            document.getElementById('questionSection').style.display = 'none';
+            document.getElementById('completionSection').style.display = 'block';
+        }
+
+        // Reset to start over
+        async function resetQuestions() {
+            try {
+                await fetch('/reset');
+                currentIndex = 0;
+                document.getElementById('completionSection').style.display = 'none';
+                await loadQuestion();
+            } catch (error) {
+                console.log('Failed to reset questions:', error);
+                showError('questionError', 'Failed to reset. Please refresh the page.');
+            }
+        }
+
+        // Update main progress display
+        async function updateMainProgress() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                // Clear progress display if no username
+                const countElement = document.getElementById('mainProgressCount');
+                const fillElement = document.getElementById('mainProgressFill');
+                if (countElement) countElement.textContent = '0 / 0';
+                if (fillElement) fillElement.style.width = '0%';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/get_user_progress?username=${encodeURIComponent(username)}`);
+                const progress = await response.json();
+                
+                if (progress.error) {
+                    console.log('Error getting progress:', progress.error);
+                    return;
+                }
+                
+                const completed = progress.completed_count || 0;
+                const total = progress.total_questions || 0;
+                const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+                
+                const countElement = document.getElementById('mainProgressCount');
+                const fillElement = document.getElementById('mainProgressFill');
+                
+                if (countElement) countElement.textContent = `${completed} / ${total}`;
+                if (fillElement) fillElement.style.width = `${percentage}%`;
+                
+            } catch (error) {
+                console.log('Failed to update main progress:', error);
+            }
+        }
+
+        // Question list management
+        let questionGroups = {};
+        let filteredQuestions = [];
+        let isQuestionListOpen = false;
+
+        // Toggle question list sidebar
+        function toggleQuestionList() {
+            const sidebar = document.getElementById('questionListSidebar');
+            const isVisible = sidebar.style.display === 'block';
+            
+            if (isVisible) {
+                sidebar.style.display = 'none';
+                isQuestionListOpen = false;
+            } else {
+                sidebar.style.display = 'block';
+                isQuestionListOpen = true;
+                if (Object.keys(questionGroups).length === 0) {
+                    loadQuestionList();
+                } else {
+                    // Question list already loaded, just update progress
+                    updateQuestionListProgress();
+                }
+            }
+        }
+
+        // Load question list
+        async function loadQuestionList() {
+            const loading = document.getElementById('questionListLoading');
+            const groups = document.getElementById('questionListGroups');
+            
+            loading.style.display = 'block';
+            groups.innerHTML = '';
+
+            try {
+                const response = await fetch('/get_question_groups');
+                const data = await response.json();
+
+                loading.style.display = 'none';
+                questionGroups = data;
+                renderQuestionList();
+                
+                // Load user progress to update answered status
+                await updateQuestionListProgress();
+
+            } catch (error) {
+                loading.style.display = 'none';
+                groups.innerHTML = '<p class="error">Failed to load questions. Please try again.</p>';
+                console.error('Error loading question list:', error);
+            }
+        }
+
+        // Render question list
+        function renderQuestionList() {
+            const groups = document.getElementById('questionListGroups');
+            let html = '';
+
+            const searchTerm = document.getElementById('questionSearchInput').value.toLowerCase();
+            
+            for (const [groupName, group] of Object.entries(questionGroups)) {
+                // Filter questions based on search term
+                const filteredQuestions = group.questions.filter(question => 
+                    question.question_id.toLowerCase().includes(searchTerm) || 
+                    question.question.toLowerCase().includes(searchTerm)
+                );
+
+                if (filteredQuestions.length === 0 && searchTerm) {
+                    continue; // Skip empty groups when searching
+                }
+
+                // Count answered questions in this group
+                const answeredCount = group.questions.filter(question => question.answered || false).length;
+
+                html += `
+                    <div class="question-group-compact">
+                        <div class="group-header-compact" onclick="toggleQuestionGroup('${groupName}')">
+                            <span class="group-name-compact">${group.name}</span>
+                            <span class="group-count-compact">${answeredCount}/${group.questions.length}</span>
+                            <span class="group-arrow-compact">▼</span>
+                        </div>
+                        <div class="group-questions-compact" id="group-${groupName}">
+                `;
+
+                const questionsToShow = searchTerm ? filteredQuestions : group.questions;
+                
+                questionsToShow.forEach((question, index) => {
+                    const isAnswered = question.answered || false;
+                    const statusClass = isAnswered ? 'answered' : 'unanswered';
+                    const statusIcon = isAnswered ? '✓' : '○';
+                    
+                    html += `
+                        <div class="question-item-compact ${statusClass}" 
+                             onclick="jumpToQuestionFromList('${question.question_id}')"
+                             data-question-id="${question.question_id}">
+                            <span class="question-status-compact">${statusIcon}</span>
+                            <span class="question-id-compact">${question.question_id}</span>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            groups.innerHTML = html;
+        }
+
+        // Toggle question group
+        function toggleQuestionGroup(groupName) {
+            const groupElement = document.getElementById(`group-${groupName}`);
+            const arrow = groupElement.parentElement.querySelector('.group-arrow-compact');
+            
+            if (groupElement.style.display === 'none') {
+                groupElement.style.display = 'block';
+                arrow.textContent = '▼';
+            } else {
+                groupElement.style.display = 'none';
+                arrow.textContent = '▶';
+            }
+        }
+
+        // Jump to question from list
+        async function jumpToQuestionFromList(questionId) {
+            try {
+                document.getElementById('questionListSidebar').style.display = 'none';
+                isQuestionListOpen = false;
+                await loadQuestion(questionId);
+                updateQuestionListProgress();
+            } catch (error) {
+                console.error('Error jumping to question:', error);
+                alert('Failed to jump to question. Please try again.');
+            }
+        }
+
+        // Search questions
+        function searchQuestions() {
+            const searchTerm = document.getElementById('questionSearchInput').value;
+            const clearBtn = document.getElementById('searchClearBtn');
+            
+            if (searchTerm.trim()) {
+                clearBtn.style.display = 'inline-block';
+            } else {
+                clearBtn.style.display = 'none';
+            }
+            
+            renderQuestionList();
+        }
+
+        // Clear search
+        function clearQuestionSearch() {
+            document.getElementById('questionSearchInput').value = '';
+            document.getElementById('searchClearBtn').style.display = 'none';
+            renderQuestionList();
+        }
+
+        // Update question list progress
+        async function updateQuestionListProgress() {
+            if (!isQuestionListOpen || Object.keys(questionGroups).length === 0) {
+                return;
+            }
+
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                // Clear answered status if no username
+                for (const [groupName, group] of Object.entries(questionGroups)) {
+                    group.questions.forEach(question => {
+                        question.answered = false;
+                    });
+                }
+                renderQuestionList();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/get_user_progress?username=${encodeURIComponent(username)}`);
+                const progress = await response.json();
+                
+                if (progress.error) {
+                    console.log('Error getting progress for question list:', progress.error);
+                    return;
+                }
+                
+                // Update answered status for questions
+                for (const [groupName, group] of Object.entries(questionGroups)) {
+                    group.questions.forEach(question => {
+                        question.answered = progress.answered_questions ? 
+                            progress.answered_questions.includes(question.question_id) : false;
+                    });
+                }
+                
+                renderQuestionList();
+                
+            } catch (error) {
+                console.error('Error updating question list progress:', error);
+            }
+        }
+
+        // Toggle wrong answers sidebar
+        function toggleWrongAnswers() {
+            const sidebar = document.getElementById('wrongAnswersSidebar');
+            const isVisible = sidebar.style.display === 'block';
+            
+            if (isVisible) {
+                sidebar.style.display = 'none';
+            } else {
+                sidebar.style.display = 'block';
+                loadWrongAnswers();
+            }
+        }
+
+        // Utility functions
+        function showLoading(show) {
+            document.getElementById('loadingSection').style.display = show ? 'block' : 'none';
+        }
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        function hideError(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+
+        function shuffleArray(array) {
+            const shuffled = [...array];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
+        }
+
+        // Handle Enter key in username input
+        document.getElementById('username').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                setUsername();
+            }
+        });
+
+        // Handle remember checkbox change
+        document.getElementById('rememberUsername').addEventListener('change', function(e) {
+            if (!e.target.checked) {
+                localStorage.removeItem('annotationUsername');
+                localStorage.setItem('rememberUsername', 'false');
+            } else {
+                localStorage.setItem('rememberUsername', 'true');
+            }
+        });
+
+        // Prevent form submission on Enter in video element
+        document.addEventListener('keypress', function(e) {
+            if (e.target.tagName === 'VIDEO' && e.key === 'Enter') {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

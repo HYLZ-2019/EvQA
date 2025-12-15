@@ -1,0 +1,25 @@
+torch==2.9.0
+torchvision
+torchmetrics
+tqdm
+numpy
+scipy
+scikit-image
+pandas
+matplotlib
+h5py
+hdf5plugin
+ffmpeg-python
+opencv-python
+Pillow
+PyYAML
+tensorboard
+moviepy==1.0.3 # Version matters, used for tensorboard video logging
+transformers>=4.57.0
+qwen-vl-utils>=0.0.14
+huggingface-hub
+safetensors
+tokenizers
+sentencepiece
+flash-attn # Building takes forever, I recommend downloading a pre-built wheel
+Flask

@@ -1,0 +1,1 @@
+checkpoints/adaptive_e2vid/epoch_0059.pth

@@ -1,0 +1,7 @@
+__pycache__
+review_system/logs
+*/outputs
+*/checkpoints
+*/tensorboard_logs
+*/video_cache
+*/results
