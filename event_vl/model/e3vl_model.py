@@ -534,8 +534,12 @@ class EventVLForConditionalGeneration(Qwen3VLForConditionalGeneration):
 		# 关键：加载时使用原始配置
 		start_time = time.time()
 		config = Qwen3VLConfig.from_pretrained(pretrained_model_name_or_path, dtype=kwargs.get('torch_dtype', None))
-		# 创建模型实例（此时参数尚未初始化）
-		model = cls(config, do_post_init=False).to("cuda")  # Don't initialize, weights will be copied in later
+
+		from transformers.modeling_utils import no_init_weights
+		# 使用 no_init_weights 跳过随机初始化，并使用 torch.device("cuda") 直接在 GPU 上创建模型
+		with no_init_weights(), torch.device("cuda"):
+			model = cls(config, do_post_init=False)
+
 		print("Initialization wasted time: ", time.time() - start_time)
 
 		qwen_state_dict = Qwen3VLForConditionalGeneration.from_pretrained(
